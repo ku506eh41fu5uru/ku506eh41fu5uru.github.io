@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Twitter？なにそれおいしいの？？？</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      background: #000;
+      display: block;
+      border: 4px solid #444;
+      box-shadow: 0 0 30px rgba(0, 150, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="800" height="500"></canvas>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    let gameState = "title";
+
+    let player = { x: 400, y: 250, width: 48, height: 48, speed: 7 };
+
+    let balls = [];
+    let startTime = 0;
+    let score = 0;
+    let lastSpawnTime = 0;
+    let speedLevel = 1;
+    let warning = null;
+
+    const playerImg = new Image();
+    playerImg.src = "https://i.ibb.co/3QgyXvV/124021.png";
+
+    const ballImg = new Image();
+    ballImg.src = "https://i.ibb.co/4ngyMR2T/Elon-Musk-54820081119-cropped.png";
+
+    const titleBgImg = new Image();
+    const gameOverBgImg = new Image();
+
+    titleBgImg.src = "https://i.ibb.co/pvKqY8Lq/155-20260429135320-1.png";
+    gameOverBgImg.src = "https://i.ibb.co/4nRhrngj/155-20260429135320-2.png";
+
+    let audioContext;
+    let beepOsc1, beepOsc2, gainNode;
+    let isBeeping = false;
+
+    function startBeepBGM() {
+      if (isBeeping) return;
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      gainNode = audioContext.createGain();
+      gainNode.gain.value = 0.15;
+
+      beepOsc1 = audioContext.createOscillator();
+      beepOsc2 = audioContext.createOscillator();
+
+      beepOsc1.type = 'sawtooth';
+      beepOsc2.type = 'square';
+      beepOsc1.frequency.setValueAtTime(420, audioContext.currentTime);
+      beepOsc2.frequency.setValueAtTime(680, audioContext.currentTime);
+
+      beepOsc1.connect(gainNode);
+      beepOsc2.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      beepOsc1.start();
+      beepOsc2.start();
+      isBeeping = true;
+    }
+
+    function stopBeepBGM() {
+      if (beepOsc1) beepOsc1.stop();
+      if (beepOsc2) beepOsc2.stop();
+      isBeeping = false;
+    }
+
+    const keys = { w: false, a: false, s: false, d: false, space: false };
+
+    window.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      if (k === "w") keys.w = true;
+      if (k === "a") keys.a = true;
+      if (k === "s") keys.s = true;
+      if (k === "d") keys.d = true;
+      if (k === " ") keys.space = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      const k = e.key.toLowerCase();
+      if (k === "w") keys.w = false;
+      if (k === "a") keys.a = false;
+      if (k === "s") keys.s = false;
+      if (k === "d") keys.d = false;
+      if (k === " ") keys.space = false;
+    });
+
+    function createBall(x, y) {
+      const baseSpeed = 3.8 + (speedLevel - 1) * 0.7;
+      const speed = baseSpeed + Math.random() * 1.3;
+      const angle = Math.random() * Math.PI * 2;
+      return { 
+        x: x, 
+        y: y, 
+        radius: 22, 
+        dx: Math.cos(angle) * speed, 
+        dy: Math.sin(angle) * speed 
+      };
+    }
+
+    function initGame() {
+      player.x = 380;
+      player.y = 230;
+      balls = [];
+      speedLevel = 1;
+      lastSpawnTime = 0;
+      warning = null;
+      startTime = Date.now();
+      score = 0;
+      balls.push(createBall(200 + Math.random() * 400, 150 + Math.random() * 200));
+    }
+
+    function checkCollision(ball) {
+      const closestX = Math.max(player.x, Math.min(ball.x, player.x + player.width));
+      const closestY = Math.max(player.y, Math.min(ball.y, player.y + player.height));
+      const dx = ball.x - closestX;
+      const dy = ball.y - closestY;
+      return Math.sqrt(dx*dx + dy*dy) < ball.radius + 12;
+    }
+
+    function update() {
+      if (gameState === "playing") {
+        if (!isBeeping) startBeepBGM();
+
+        if (keys.w) player.y -= player.speed;
+        if (keys.s) player.y += player.speed;
+        if (keys.a) player.x -= player.speed;
+        if (keys.d) player.x += player.speed;
+
+        player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+        for (let ball of balls) {
+          ball.x += ball.dx;
+          ball.y += ball.dy;
+
+          if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) ball.dx = -ball.dx;
+          if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) ball.dy = -ball.dy;
+        }
+
+        for (let ball of balls) {
+          if (checkCollision(ball)) {
+            gameState = "gameover";
+            stopBeepBGM();
+            return;
+          }
+        }
+
+        score = Math.floor((Date.now() - startTime) / 1000);
+
+        const currentSpawn = Math.floor((Date.now() - startTime) / 10000);
+        if (currentSpawn > lastSpawnTime && balls.length < 7) {
+          lastSpawnTime = currentSpawn;
+          const spawnX = 100 + Math.random() * (canvas.width - 200);
+          const spawnY = 100 + Math.random() * (canvas.height - 200);
+          warning = { x: spawnX, y: spawnY, timeLeft: 60 };
+        }
+
+        if (warning) {
+          warning.timeLeft--;
+          if (warning.timeLeft <= 0) {
+            balls.push(createBall(warning.x, warning.y));
+            speedLevel++;
+            for (let ball of balls) {
+              ball.dx *= 1.08;
+              ball.dy *= 1.08;
+            }
+            warning = null;
+          }
+        }
+      } 
+      else if ((gameState === "title" || gameState === "gameover") && keys.space) {
+        gameState = "playing";
+        initGame();
+        keys.space = false;
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (gameState === "title") {
+        if (titleBgImg.complete) {
+          ctx.drawImage(titleBgImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = "#000022";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      } 
+      else if (gameState === "playing") {
+        if (playerImg.complete) {
+          ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+        } else {
+          ctx.fillStyle = "#0099ff";
+          ctx.fillRect(player.x, player.y, player.width, player.height);
+        }
+
+        for (let ball of balls) {
+          const size = ball.radius * 2.1;
+          if (ballImg.complete) {
+            ctx.drawImage(ballImg, ball.x - size/2, ball.y - size/2, size, size);
+          } else {
+            ctx.fillStyle = "#ff3366";
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        if (warning) {
+          const alpha = (warning.timeLeft % 20 < 10) ? 0.9 : 0.3;
+          ctx.strokeStyle = `rgba(255, 60, 60, ${alpha})`;
+          ctx.lineWidth = 7;
+          ctx.beginPath();
+          ctx.arc(warning.x, warning.y, 36, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "20px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(`時間: ${score} 秒`, 25, 45);
+        ctx.fillText(`イーロン: ${balls.length} / 7`, 25, 75);
+        ctx.fillText(`レベル: ${speedLevel}`, 25, 105);
+      } 
+      else if (gameState === "gameover") {
+        if (gameOverBgImg.complete) {
+          ctx.drawImage(gameOverBgImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = "#330000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
